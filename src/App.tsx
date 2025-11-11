@@ -153,7 +153,7 @@ export default function App() {
 
 			{/* Celebrities pinned on the line */}
 			{celebs &&
-				celebs.map((c, idx) => {
+				celebs.map((c) => {
 					const topVH = scoreToVH(c.score);
 					return (
 						<div
