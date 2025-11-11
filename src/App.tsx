@@ -1,5 +1,5 @@
-import React, { useMemo } from "react";
-import { useQuery } from "convex/react";
+import React, { useMemo, useState, useEffect } from "react";
+import { useQuery, useMutation } from "convex/react";
 import { api } from "../convex/_generated/api";
 
 // NOTE: Interpreting "the whole site should be 2 vh tall" as full viewport height (100vh)
@@ -52,8 +52,94 @@ export default function App() {
 	// Convert score (0..1) to top offset in vh along the timeline
 	const scoreToVH = (score: number) => timelineTopVH + score * usableVH;
 
+	const offsetsById = useMemo(() => {
+		if (!celebs || celebs.length === 0) return new Map<string, number>();
+		const items = celebs.map((c) => ({
+			id: c.id,
+			topVH: scoreToVH(c.score),
+		}));
+		const sorted = [...items].sort((a, b) => a.topVH - b.topVH);
+		const map = new Map<string, number>();
+		const THRESHOLD_VH = 2; // within 2vh considered close
+		let toggle = -1; // alternate left/right
+		for (let i = 0; i < sorted.length; i++) {
+			const prev = sorted[i - 1];
+			const cur = sorted[i];
+			if (i > 0 && Math.abs(cur.topVH - prev.topVH) < THRESHOLD_VH) {
+				toggle = toggle * -1;
+				map.set(cur.id, toggle * 10); // ±10px small stagger
+			} else {
+				toggle = -1;
+				map.set(cur.id, 0);
+			}
+		}
+		return map;
+	}, [celebs, usableVH]);
+
+	const [hoveredId, setHoveredId] = useState<string | null>(null);
+	const [voteForId, setVoteForId] = useState<string | null>(null);
+	const [voteValue, setVoteValue] = useState<string>(""); // percent string 0..100
+	const voteMutation = useMutation(api.queries.vote);
+	const HOVER_THRESHOLD_PX = 64; // only count as hover if within ~6px vertically
+	const [viewportH, setViewportH] = useState<number>(
+		typeof window !== "undefined" ? window.innerHeight : 0
+	);
+	useEffect(() => {
+		const onResize = () => setViewportH(window.innerHeight);
+		window.addEventListener("resize", onResize);
+		return () => window.removeEventListener("resize", onResize);
+	}, []);
+
+	const votingCeleb = useMemo(
+		() => celebs.find((c) => c.id === voteForId) ?? null,
+		[celebs, voteForId]
+	);
+
+	// Precompute absolute pixel Y for each celeb (page coordinates)
+	const celebPositionsPx = useMemo(() => {
+		return celebs.map((c) => ({
+			id: c.id,
+			y: (scoreToVH(c.score) / 100) * viewportH,
+		}));
+	}, [celebs, viewportH, usableVH]);
+
+	// Band handlers: compute nearest by vertical distance; closest wins
+	const onBandMove: React.MouseEventHandler<HTMLDivElement> = (e) => {
+		const mousePageY = e.clientY + window.scrollY;
+		if (voteForId) return;
+		const centerX = window.innerWidth / 2;
+		const bandRight = centerX + 64; // allow up to ~64px to the right of center
+		if (e.clientX > bandRight) {
+			// Do not change hovered selection when cursor is over the right-side text area
+			return;
+		}
+		if (celebPositionsPx.length === 0) {
+			setHoveredId(null);
+			return;
+		}
+		let bestId: string | null = null;
+		let bestDist = Infinity;
+		for (const p of celebPositionsPx) {
+			const d = Math.abs(mousePageY - p.y);
+			if (d < bestDist) {
+				bestDist = d;
+				bestId = p.id;
+			}
+		}
+		if (bestDist <= HOVER_THRESHOLD_PX) {
+			setHoveredId(bestId);
+		} else {
+			setHoveredId(null);
+		}
+	};
+	const onBandLeave = () => setHoveredId(null);
+
 	return (
-		<div style={styles.page}>
+		<div
+			style={styles.page}
+			onMouseMove={onBandMove}
+			onMouseLeave={onBandLeave}
+		>
 			<div style={styles.bgWrap}>
 				<div style={styles.topHalf} />
 				<div style={styles.bottomHalf} />
@@ -75,7 +161,9 @@ export default function App() {
 							style={{
 								...styles.pin,
 								top: `${topVH}vh`,
-								left: "50%",
+								left: `calc(50% + ${
+									offsetsById.get(c.id) ?? 0
+								}px)`,
 							}}
 						>
 							<div
@@ -84,6 +172,9 @@ export default function App() {
 									{
 										...styles.pinWrap,
 										"--avatar-size": `${pfpSize}px`,
+										"--stagger": `${
+											offsetsById.get(c.id) ?? 0
+										}px`,
 									} as React.CSSProperties
 								}
 							>
@@ -94,12 +185,20 @@ export default function App() {
 									height={pfpSize}
 									referrerPolicy="no-referrer"
 									style={{
-										width: pfpSize,
-										height: pfpSize,
+										width:
+											hoveredId === c.id ? 124 : pfpSize,
+										height:
+											hoveredId === c.id ? 124 : pfpSize,
 										borderRadius: 8,
 										objectFit: "cover",
 										display: "block",
-										transition: "transform 160ms ease",
+										transition:
+											"transform 200ms ease, width 200ms ease, height 200ms ease",
+										transform:
+											hoveredId === c.id
+												? `translateX(calc(var(--avatar-size, ${pfpSize}px) + 84px - var(--stagger, 0px)))`
+												: undefined,
+										pointerEvents: "none",
 									}}
 								/>
 								<div
@@ -111,6 +210,23 @@ export default function App() {
 												c.score <= 0.5
 													? "#000"
 													: "#fff",
+											opacity: hoveredId === c.id ? 1 : 0,
+											left:
+												hoveredId === c.id
+													? `calc(100% + 48px + 124px - var(--stagger, 0px))`
+													: `calc(100% + 50px - var(--stagger, 0px))`,
+											transform: "translate(0, -50%)",
+											width: "auto",
+											minWidth: "60ch",
+											maxWidth: "min(90ch, 85vw)",
+											whiteSpace: "normal",
+											lineHeight: 1.6,
+											pointerEvents:
+												hoveredId === c.id
+													? "auto"
+													: "none",
+											position: "absolute",
+											top: "50%",
 										} as React.CSSProperties
 									}
 								>
@@ -134,12 +250,50 @@ export default function App() {
 									</div>
 									<div
 										style={{
-											fontSize: 11,
-											opacity: 0.7,
-											marginTop: 6,
+											display: "flex",
+											alignItems: "center",
+											gap: 8,
+											marginTop: 8,
 										}}
 									>
-										Score: {c.score.toFixed(2)}
+										<span
+											style={{
+												fontSize: 12,
+												opacity: 0.8,
+											}}
+										>
+											{(c.score * 100).toFixed(0)}% evil
+										</span>
+										<button
+											onClick={(ev) => {
+												ev.stopPropagation();
+												setVoteForId(c.id);
+												setVoteValue(
+													String(
+														Math.round(
+															c.score * 100
+														)
+													)
+												);
+											}}
+											style={{
+												fontSize: 12,
+												padding: "2px 8px",
+												borderRadius: 4,
+												border: "none",
+												cursor: "pointer",
+												background:
+													c.score <= 0.5
+														? "#000"
+														: "#fff",
+												color:
+													c.score <= 0.5
+														? "#fff"
+														: "#000",
+											}}
+										>
+											Vote
+										</button>
 									</div>
 								</div>
 							</div>
@@ -164,38 +318,83 @@ export default function App() {
 				)}
 			</div>
 
+			{voteForId && (
+				<div
+					style={styles.voteModalOverlay}
+					onClick={() => setVoteForId(null)}
+				>
+					<div
+						style={styles.voteModal}
+						onClick={(e) => e.stopPropagation()}
+					>
+						<div style={{ fontWeight: 700, marginBottom: 8 }}>
+							Cast your vote
+						</div>
+						<label style={{ fontSize: 13, opacity: 0.9 }}>
+							How evil is {votingCeleb?.name ?? "this person"}?
+							(0–100%)
+						</label>
+						<input
+							type="number"
+							min={0}
+							max={100}
+							step={1}
+							value={voteValue}
+							onChange={(e) => setVoteValue(e.target.value)}
+							style={{
+								width: "100%",
+								marginTop: 6,
+								padding: "8px 10px",
+								borderRadius: 6,
+								border: "1px solid rgba(0,0,0,0.2)",
+								boxSizing: "border-box",
+							}}
+						/>
+						<div
+							style={{
+								display: "flex",
+								gap: 8,
+								marginTop: 12,
+								justifyContent: "flex-end",
+							}}
+						>
+							<button
+								onClick={() => setVoteForId(null)}
+								style={styles.voteSecondaryBtn}
+							>
+								Cancel
+							</button>
+							<button
+								onClick={async () => {
+									const n = Math.max(
+										0,
+										Math.min(100, Number(voteValue))
+									);
+									if (Number.isNaN(n)) return;
+									try {
+										await voteMutation({
+											id: voteForId as any,
+											score: n / 100,
+										});
+										setVoteForId(null);
+									} catch (e) {
+										console.error(e);
+									}
+								}}
+								style={styles.votePrimaryBtn}
+							>
+								Vote
+							</button>
+						</div>
+					</div>
+				</div>
+			)}
+
 			{/* Inline styles for hover since we are keeping everything in this file */}
 			<style>{`
         .pin-wrap { position: relative; z-index: 1; }
         .pin-wrap img { will-change: transform; }
-        .hover-card {
-          position: absolute;
-          top: 50%;
-          left: calc(100% + 14px); /* closer to the avatar at rest */
-          transform: translate(0, -50%);
-          width: auto;
-          min-width: 60ch;           /* ensure ~60 characters before wrapping */
-          max-width: min(90ch, 85vw);/* cap so it doesn’t sprawl on huge screens */
-          white-space: normal;       /* allow normal wrapping */
-          opacity: 0;
-          pointer-events: none;
-          transition: opacity 220ms ease, transform 220ms ease, left 220ms ease;
-          line-height: 1.6;
-          overflow: visible;
-        }
-        .pin-wrap:hover { z-index: 5; }
-        .pin-wrap:hover img {
-          width: 124px !important;
-          height: 124px !important;
-          transform: translateX(calc(var(--avatar-size, 72px) + 16px));
-          transition: transform 200ms ease, width 200ms ease, height 200ms ease;
-        }
-        .pin-wrap:hover .hover-card {
-          opacity: 1;
-          /* after the image expands, keep text close: 12px gap */
-          left: calc(100% + 12px + 124px);
-          transform: translate(0, -50%);
-        }
+        .hover-card { transition: opacity 220ms ease, left 220ms ease; }
       `}</style>
 		</div>
 	);
@@ -298,5 +497,41 @@ const styles: Record<string, React.CSSProperties> = {
 		width: 350,
 		height: "auto",
 		zIndex: 100,
+	},
+	voteModalOverlay: {
+		position: "fixed",
+		inset: 0,
+		background: "rgba(0,0,0,0.15)",
+		zIndex: 200,
+		display: "flex",
+		alignItems: "center",
+		justifyContent: "center",
+	},
+	voteModal: {
+		width: 320,
+		maxWidth: "90vw",
+		background: "#fff",
+		color: "#000",
+		borderRadius: 12,
+		boxShadow: "0 10px 40px rgba(0,0,0,0.25)",
+		padding: 16,
+	},
+	votePrimaryBtn: {
+		fontSize: 13,
+		padding: "6px 10px",
+		borderRadius: 6,
+		border: "none",
+		cursor: "pointer",
+		background: "#111",
+		color: "#fff",
+	},
+	voteSecondaryBtn: {
+		fontSize: 13,
+		padding: "6px 10px",
+		borderRadius: 6,
+		border: "1px solid rgba(0,0,0,0.2)",
+		cursor: "pointer",
+		background: "transparent",
+		color: "#111",
 	},
 };
