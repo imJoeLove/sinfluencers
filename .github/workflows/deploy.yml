@@ -20,22 +20,30 @@ jobs:
         steps:
             - uses: actions/checkout@v4
 
-            - uses: actions/setup-node@v4
+            # Install pnpm first
+            - name: Setup pnpm
+              uses: pnpm/action-setup@v3
+              with:
+                  version: 9
+
+            # Then setup Node and enable pnpm cache
+            - name: Setup Node.js
+              uses: actions/setup-node@v4
               with:
                   node-version: 20
                   cache: "pnpm"
 
-            - uses: pnpm/action-setup@v3
-              with:
-                  version: 9 # or your pnpm version
+            - name: Install dependencies
+              run: pnpm install
 
-            - run: pnpm install
-            - run: pnpm run build
+            - name: Build
+              run: pnpm run build
 
-            # SPA fallback
-            - run: cp dist/index.html dist/404.html
+            - name: Copy SPA fallback
+              run: cp dist/index.html dist/404.html
 
-            - uses: actions/upload-pages-artifact@v3
+            - name: Upload artifact
+              uses: actions/upload-pages-artifact@v3
               with:
                   path: dist
 
