@@ -59,6 +59,9 @@ export default function App() {
 				<div style={styles.bottomHalf} />
 			</div>
 
+			{/* Logo in top-right corner */}
+			<img src="/logo.png" alt="Site Logo" style={styles.logo} />
+
 			{/* Center vertical timeline */}
 			<div style={{ ...styles.timeline, width: timelineWidthPx }} />
 
@@ -168,13 +171,17 @@ export default function App() {
         .hover-card {
           position: absolute;
           top: 50%;
-          left: calc(100% + 28px);
+          left: calc(100% + 14px); /* closer to the avatar at rest */
           transform: translate(0, -50%);
-          max-width: min(60ch, 70vw);
+          width: auto;
+          min-width: 60ch;           /* ensure ~60 characters before wrapping */
+          max-width: min(90ch, 85vw);/* cap so it doesn’t sprawl on huge screens */
+          white-space: normal;       /* allow normal wrapping */
           opacity: 0;
           pointer-events: none;
-          transition: opacity 180ms ease, transform 180ms ease, left 180ms ease;
-          line-height: 1.5;
+          transition: opacity 220ms ease, transform 220ms ease, left 220ms ease;
+          line-height: 1.6;
+          overflow: visible;
         }
         .pin-wrap:hover { z-index: 5; }
         .pin-wrap:hover img {
@@ -185,7 +192,8 @@ export default function App() {
         }
         .pin-wrap:hover .hover-card {
           opacity: 1;
-          left: calc(100% + 28px + 124px + 20px);
+          /* after the image expands, keep text close: 12px gap */
+          left: calc(100% + 12px + 124px);
           transform: translate(0, -50%);
         }
       `}</style>
@@ -254,10 +262,10 @@ const styles: Record<string, React.CSSProperties> = {
 		top: 0,
 		left: 0,
 		height: "200vh",
-		width: "25vw",
+		width: "100vw",
 		display: "flex",
 		flexDirection: "column",
-		justifyContent: "space-around",
+		justifyContent: "space-between",
 		alignItems: "flex-start",
 		pointerEvents: "none",
 		zIndex: 5,
@@ -267,12 +275,28 @@ const styles: Record<string, React.CSSProperties> = {
 		transformOrigin: "center",
 		userSelect: "none",
 	},
-	emoji0: { transform: "rotate(-10deg) translateX(30%)" },
-	emoji1: { transform: "rotate(6deg) translateX(15%)" },
-	emoji2: { transform: "rotate(-5deg) translateX(25%)" },
-	emoji3: { transform: "rotate(4deg) translateX(18%)" },
-	emoji4: { transform: "rotate(-7deg) translateX(22%)" },
-	emoji5: { transform: "rotate(8deg) translateX(12%)" },
-	emoji6: { transform: "rotate(-4deg) translateX(28%)" },
-	emoji7: { transform: "rotate(5deg) translateX(17%)" },
+	emoji0: {
+		transform: "rotate(-10deg)",
+		marginLeft: "30vw",
+		marginTop: "6vh",
+	},
+	emoji1: { transform: "rotate(6deg)", marginLeft: "15vw" },
+	emoji2: { transform: "rotate(-5deg)", marginLeft: "26vw" },
+	emoji3: { transform: "rotate(4deg)", marginLeft: "18vw" },
+	emoji4: { transform: "rotate(-7deg)", marginLeft: "24vw" },
+	emoji5: { transform: "rotate(8deg)", marginLeft: "12vw" },
+	emoji6: { transform: "rotate(-4deg)", marginLeft: "28vw" },
+	emoji7: {
+		transform: "rotate(5deg)",
+		marginLeft: "17vw",
+		marginBottom: "6vh",
+	},
+	logo: {
+		position: "absolute",
+		top: -64,
+		right: 16,
+		width: 350,
+		height: "auto",
+		zIndex: 100,
+	},
 };
