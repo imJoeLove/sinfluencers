@@ -146,7 +146,11 @@ export default function App() {
 			</div>
 
 			{/* Logo in top-right corner */}
-			<img src="/logo.png" alt="Site Logo" style={styles.logo} />
+			<img
+				src={`${import.meta.env.BASE_URL}logo.png`}
+				alt="Site Logo"
+				style={styles.logo}
+			/>
 
 			{/* Center vertical timeline */}
 			<div style={{ ...styles.timeline, width: timelineWidthPx }} />
